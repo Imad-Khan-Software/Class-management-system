@@ -80,7 +80,7 @@ export default function Home() {
   const [academicYear, setAcademicYear] = useState("");
   const [fullName, setFullName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
-  const [attendanceDate, setAttendanceDate] = useState(todayString());
+  const [attendanceDate, setAttendanceDate] = useState("");
   const [attendanceDraft, setAttendanceDraft] = useState<
     Record<number, "Present" | "Absent">
   >({});
@@ -133,6 +133,10 @@ export default function Home() {
           marks.length
       )
     : null;
+
+  useEffect(() => {
+    setAttendanceDate((current) => current || todayString());
+  }, []);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
