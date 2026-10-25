@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --background: #f5f7fb;
+  --foreground: #0f172a;
 }
 
 @theme inline {
@@ -12,15 +13,197 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
 }
 
 body {
+  min-height: 100vh;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgb(59 130 246 / 30%);
+  outline-offset: 2px;
+}
+
+.field-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #dbe2ea;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.75rem 0.875rem;
+  color: #0f172a;
+  font-size: 0.875rem;
+  line-height: 1.4rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.field-input::placeholder {
+  color: #94a3b8;
+}
+
+.field-input:hover {
+  border-color: #cbd5e1;
+}
+
+.field-input:focus {
+  border-color: #60a5fa;
+  outline: none;
+  box-shadow: 0 0 0 4px rgb(219 234 254 / 70%);
+}
+
+.primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px solid #2563eb;
+  border-radius: 0.75rem;
+  background: #2563eb;
+  padding: 0.7rem 1rem;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.25rem;
+  transition: background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.primary-button:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+}
+
+.primary-button:focus-visible {
+  outline: 3px solid rgb(59 130 246 / 30%);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Refined sign-in experience and subtle motion */
+.login-shell {
+  background:
+    radial-gradient(circle at 12% 18%, rgb(191 219 254 / 48%), transparent 30rem),
+    radial-gradient(circle at 88% 82%, rgb(221 214 254 / 45%), transparent 28rem),
+    #f4f6fb;
+}
+
+.login-card {
+  animation: login-rise 650ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.login-visual {
+  isolation: isolate;
+}
+
+.login-orb {
+  position: absolute;
+  z-index: -1;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 9999px;
+  pointer-events: none;
+  animation: orb-float 11s ease-in-out infinite;
+}
+
+.login-orb-one {
+  top: 8%;
+  right: -7rem;
+  width: 24rem;
+  height: 24rem;
+  background: rgb(255 255 255 / 5%);
+}
+
+.login-orb-two {
+  right: 18%;
+  bottom: -9rem;
+  width: 30rem;
+  height: 30rem;
+  background: rgb(255 255 255 / 4%);
+  animation-delay: -4s;
+}
+
+.login-submit {
+  min-height: 3.1rem;
+  box-shadow: 0 10px 24px rgb(37 99 235 / 20%);
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.login-submit:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgb(37 99 235 / 27%);
+}
+
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  border: 1px solid #dbe2ea;
+  border-radius: .75rem;
+  background: white;
+  padding: .7rem 1rem;
+  color: #334155;
+  font-size: .875rem;
+  font-weight: 650;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.secondary-button:hover {
+  transform: translateY(-1px);
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes orb-float {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-14px, 18px, 0) scale(1.035); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card, .login-orb { animation: none !important; }
+  .login-submit, .secondary-button { transition: none !important; }
 }

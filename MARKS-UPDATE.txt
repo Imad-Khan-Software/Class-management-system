@@ -1,0 +1,35 @@
+TeachTrack marks update
+
+Changes:
+- Student records table now displays a separate column for every saved Quiz and Assignment in the selected class.
+- Each individual assessment cell shows score / maximum marks.
+- Quiz Total and Assignment Total continue to sum all saved assessments in their category.
+- The downloadable CSV marks sheet now includes individual quiz/assignment columns as well as category totals.
+- Saving assessment marks now writes the assessment and each student's marks to Supabase, then refreshes the visible saved records.
+- The existing responsive horizontal table scrolling and student detail/edit workflow are retained.
+
+Setup:
+1. Keep a backup of your current project.
+2. Extract this ZIP to a new folder.
+3. Copy your existing .env.local into the project root (do not share it).
+4. Run npm install, then npm run dev.
+5. Open a class, add students, choose Add marks, select Quiz or Assignment, enter a distinct name (for example Quiz 1), fill in scores and maximum marks, and save.
+6. Repeat with Quiz 2 / Assignment 2 to create additional columns and verify the totals.
+7. Refresh the page to verify saved assessment marks reload from Supabase.
+
+Note: A full dependency installation/build could not be completed in the generation environment; run the project locally and report any error exactly.
+
+Separate downloadable class files
+- Marks summary CSV: Registration No., Student Name, total Assignment marks, total Quiz marks, Mid Exam marks, and Final Exam marks.
+- Attendance detail CSV: one column per recorded class date/session, each cell P (Present), A (Absent), or Not recorded, plus Total Present / Classes Taken (for example 32/40).
+- Assignment detail CSV: individual Assignment 1, Assignment 2, etc. score/max columns and total assignment marks.
+- Quiz detail CSV: individual Quiz 1, Quiz 2, etc. score/max columns and total quiz marks.
+- Complete marks sheet CSV: the combined marks sheet remains available.
+
+The attendance denominator is the number of unique attendance dates recorded for that class. To get 40 in the denominator, the teacher must have saved attendance for 40 distinct class dates. If a student's attendance is missing for a saved date, the file labels it Not recorded rather than assuming Absent.
+
+Individual student records (teacher view + download)
+- In the class Student records table, click View details beside a student to open the individual performance panel.
+- The panel shows each Quiz, Assignment, Midterm Exam, Final Term Exam, the individual scores, category totals, and each saved attendance date/status. The teacher can use the existing Edit controls from this panel.
+- Use “Download this student’s complete record (CSV)” inside the panel to download one student’s attendance history, every assessment score, and category totals in a separate file.
+- The individual CSV is generated from the records currently loaded in the app. Live Supabase behaviour still needs to be tested in the user's environment.
