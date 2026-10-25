@@ -80,7 +80,10 @@ export default function Home() {
   const [academicYear, setAcademicYear] = useState("");
   const [fullName, setFullName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
-  const [attendanceDate, setAttendanceDate] = useState(todayString());
+ const [attendanceDate, setAttendanceDate] = useState("");
+ useEffect(() => {
+  setAttendanceDate(todayString());
+}, []);
   const [attendanceDraft, setAttendanceDraft] = useState<
     Record<number, "Present" | "Absent">
   >({});
