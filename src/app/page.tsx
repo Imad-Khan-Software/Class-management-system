@@ -594,19 +594,31 @@ export default function Home() {
     setError("");
   }
 
+  // Build the Present/Absent draft for a date: previously saved values for that
+  // date if any, otherwise empty so every student starts unmarked.
+  function draftForDate(date: string) {
+    const draft: Record<number, "Present" | "Absent"> = {};
+    classStudents.forEach((student) => {
+      const record = attendance.find((item) => item.studentId === student.id && item.date === date);
+      if (record) draft[student.id] = record.status;
+    });
+    return draft;
+  }
+
+  function changeAttendanceDate(date: string) {
+    setAttendanceDate(date);
+    setAttendanceDraft(draftForDate(date));
+    setError("");
+  }
+
   function openAttendance() {
     if (!selectedClass || classStudents.length === 0) {
       window.alert("Add students to this class before taking attendance.");
       return;
     }
-    const existing: Record<number, "Present" | "Absent"> = {};
-    classStudents.forEach((student) => {
-      const record = attendance.find(
-        (item) => item.studentId === student.id && item.date === attendanceDate
-      );
-      if (record) existing[student.id] = record.status;
-    });
-    setAttendanceDraft(existing);
+    const today = todayString();
+    setAttendanceDate(today);
+    setAttendanceDraft(draftForDate(today));
     setError("");
     setModal("attendance");
   }
@@ -634,40 +646,56 @@ export default function Home() {
     setDataMessage("");
 
     try {
-      // Read existing rows first so this does not rely on an unverified unique-index name.
-      // Every query is scoped to the signed-in teacher, selected class, student, and date.
+      // Fast path: ONE read for the whole class + date, then at most three
+      // writes (insert new rows, mark Present, mark Absent) sent in parallel.
+      const { data: existingRows, error: lookupError } = await supabase
+        .from("attendance")
+        .select("id,student_id,status")
+        .eq("teacher_id", teacherId)
+        .eq("class_id", selectedClass.id)
+        .eq("attendance_date", attendanceDate);
+      if (lookupError) throw new Error(`Could not check existing attendance: ${lookupError.message}`);
+
+      const existingByStudent = new Map<number, { id: number; status: string }[]>();
+      (existingRows ?? []).forEach((row) => {
+        const key = Number(row.student_id);
+        const list = existingByStudent.get(key) ?? [];
+        list.push({ id: Number(row.id), status: String(row.status) });
+        existingByStudent.set(key, list);
+      });
+
+      const newRows: { teacher_id: string; class_id: number; student_id: number; attendance_date: string; status: string }[] = [];
+      const presentIds: number[] = [];
+      const absentIds: number[] = [];
       for (const student of classStudents) {
         const status = attendanceDraft[student.id];
-        const { data: existing, error: lookupError } = await supabase
-          .from("attendance")
-          .select("id")
-          .eq("teacher_id", teacherId)
-          .eq("class_id", selectedClass.id)
-          .eq("student_id", student.id)
-          .eq("attendance_date", attendanceDate)
-          .maybeSingle();
-
-        if (lookupError) throw new Error(`Could not check attendance for ${student.fullName}: ${lookupError.message}`);
-
-        if (existing) {
-          const { error: updateError } = await supabase
-            .from("attendance")
-            .update({ status })
-            .eq("id", existing.id)
-            .eq("teacher_id", teacherId)
-            .eq("class_id", selectedClass.id);
-          if (updateError) throw new Error(`Could not update attendance for ${student.fullName}: ${updateError.message}`);
+        const found = existingByStudent.get(student.id);
+        if (found && found.length > 0) {
+          found.forEach((row) => {
+            if (row.status !== status) (status === "Present" ? presentIds : absentIds).push(row.id);
+          });
         } else {
-          const { error: insertError } = await supabase.from("attendance").insert({
+          newRows.push({
             teacher_id: teacherId,
             class_id: selectedClass.id,
             student_id: student.id,
             attendance_date: attendanceDate,
             status,
           });
-          if (insertError) throw new Error(`Could not save attendance for ${student.fullName}: ${insertError.message}`);
         }
       }
+
+      const writes: PromiseLike<{ error: { message: string } | null }>[] = [];
+      if (newRows.length > 0) writes.push(supabase.from("attendance").insert(newRows));
+      if (presentIds.length > 0) {
+        writes.push(supabase.from("attendance").update({ status: "Present" }).in("id", presentIds).eq("teacher_id", teacherId));
+      }
+      if (absentIds.length > 0) {
+        writes.push(supabase.from("attendance").update({ status: "Absent" }).in("id", absentIds).eq("teacher_id", teacherId));
+      }
+      const writeResults = await Promise.all(writes);
+      const writeFailure = writeResults.find((result) => result.error);
+      if (writeFailure?.error) throw new Error(`Could not save attendance: ${writeFailure.error.message}`);
 
       const { data: savedRows, error: reloadError } = await supabase
         .from("attendance")
@@ -761,13 +789,15 @@ export default function Home() {
       let assessmentId: number;
       if (matches.length === 1) {
         assessmentId = Number(matches[0].id);
-        const { error: updateAssessmentError } = await supabase
-          .from("assessments")
-          .update({ assessment_name: normalizedName })
-          .eq("id", assessmentId)
-          .eq("teacher_id", teacherId)
-          .eq("class_id", selectedClass.id);
-        if (updateAssessmentError) throw new Error(`Could not update this assessment: ${updateAssessmentError.message}`);
+        if (String(matches[0].assessment_name) !== normalizedName) {
+          const { error: updateAssessmentError } = await supabase
+            .from("assessments")
+            .update({ assessment_name: normalizedName })
+            .eq("id", assessmentId)
+            .eq("teacher_id", teacherId)
+            .eq("class_id", selectedClass.id);
+          if (updateAssessmentError) throw new Error(`Could not update this assessment: ${updateAssessmentError.message}`);
+        }
       } else {
         const { data: insertedAssessment, error: insertAssessmentError } = await supabase
           .from("assessments")
@@ -785,52 +815,51 @@ export default function Home() {
         assessmentId = Number(insertedAssessment.id);
       }
 
-      // Update or insert each student's mark using a scoped lookup. This avoids
-      // assuming that (assessment_id, student_id) has a UNIQUE constraint.
-      let savedCount = 0;
-      for (const { student, score, total } of validated) {
-        const { data: existingRows, error: findMarkError } = await supabase
-          .from("marks")
-          .select("id")
-          .eq("teacher_id", teacherId)
-          .eq("assessment_id", assessmentId)
-          .eq("student_id", student.id)
-          .limit(2);
-        if (findMarkError) {
-          throw new Error(`Could not check marks for ${student.fullName}: ${findMarkError.message}. Saved ${savedCount} of ${validated.length} student marks; retrying is safe.`);
-        }
-        if ((existingRows ?? []).length > 1) {
-          throw new Error(`Duplicate mark rows exist for ${student.fullName}. Saved ${savedCount} of ${validated.length} student marks; no further marks were changed. Resolve the duplicate rows before retrying.`);
-        }
+      // Fast path: ONE read of every existing mark for this assessment, then at most
+      // two writes (insert new rows, update existing rows by primary key) in parallel.
+      const { data: existingMarks, error: findMarksError } = await supabase
+        .from("marks")
+        .select("id,student_id")
+        .eq("teacher_id", teacherId)
+        .eq("assessment_id", assessmentId);
+      if (findMarksError) throw new Error(`Could not check existing marks: ${findMarksError.message}`);
 
-        if (existingRows?.length === 1) {
-          const { error: updateMarkError } = await supabase
-            .from("marks")
-            .update({ class_id: selectedClass.id, score, total })
-            .eq("id", Number(existingRows[0].id))
-            .eq("teacher_id", teacherId)
-            .eq("assessment_id", assessmentId)
-            .eq("student_id", student.id);
-          if (updateMarkError) {
-            throw new Error(`Could not update marks for ${student.fullName}: ${updateMarkError.message}. Saved ${savedCount} of ${validated.length} student marks; retrying is safe.`);
-          }
-        } else {
-          const { error: insertMarkError } = await supabase
-            .from("marks")
-            .insert({
-              teacher_id: teacherId,
-              class_id: selectedClass.id,
-              assessment_id: assessmentId,
-              student_id: student.id,
-              score,
-              total,
-            });
-          if (insertMarkError) {
-            throw new Error(`Could not insert marks for ${student.fullName}: ${insertMarkError.message}. Saved ${savedCount} of ${validated.length} student marks; retrying is safe.`);
-          }
+      const markIdByStudent = new Map<number, number>();
+      const duplicateStudents = new Set<number>();
+      (existingMarks ?? []).forEach((row) => {
+        const key = Number(row.student_id);
+        if (markIdByStudent.has(key)) duplicateStudents.add(key);
+        markIdByStudent.set(key, Number(row.id));
+      });
+      for (const { student } of validated) {
+        if (duplicateStudents.has(student.id)) {
+          throw new Error(`Duplicate mark rows exist for ${student.fullName}. No marks were changed. Resolve the duplicate rows before retrying.`);
         }
-        savedCount += 1;
       }
+
+      const toInsert: { teacher_id: string; class_id: number; assessment_id: number; student_id: number; score: number; total: number }[] = [];
+      const toUpdate: { id: number; teacher_id: string; class_id: number; assessment_id: number; student_id: number; score: number; total: number }[] = [];
+      for (const { student, score, total } of validated) {
+        const base = {
+          teacher_id: teacherId,
+          class_id: selectedClass.id,
+          assessment_id: assessmentId,
+          student_id: student.id,
+          score,
+          total,
+        };
+        const existingId = markIdByStudent.get(student.id);
+        if (existingId !== undefined) toUpdate.push({ id: existingId, ...base });
+        else toInsert.push(base);
+      }
+
+      const markWrites: PromiseLike<{ error: { message: string } | null }>[] = [];
+      if (toInsert.length > 0) markWrites.push(supabase.from("marks").insert(toInsert));
+      if (toUpdate.length > 0) markWrites.push(supabase.from("marks").upsert(toUpdate, { onConflict: "id" }));
+      const markResults = await Promise.all(markWrites);
+      const markFailure = markResults.find((result) => result.error);
+      if (markFailure?.error) throw new Error(`Could not save marks: ${markFailure.error.message}. Retrying is safe.`);
+      const savedCount = validated.length;
 
       const [{ data: savedAssessmentRows, error: reloadAssessmentsError }, { data: savedRows, error: reloadMarksError }] = await Promise.all([
         supabase.from("assessments").select("id,class_id,category,assessment_name").eq("teacher_id", teacherId).order("id"),
@@ -1308,7 +1337,7 @@ export default function Home() {
             {modal === "attendance" && (
               <form onSubmit={saveAttendance} className="space-y-4">
                 <Field label="Attendance date">
-                  <input required type="date" value={attendanceDate} onChange={(event) => setAttendanceDate(event.target.value)} className="field-input" />
+                  <input required type="date" value={attendanceDate} onChange={(event) => changeAttendanceDate(event.target.value)} className="field-input" />
                 </Field>
                 <div className="overflow-x-auto rounded-xl border border-slate-200">
                   <table className="w-full text-left text-sm">
